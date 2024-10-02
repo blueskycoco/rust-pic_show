@@ -3,17 +3,14 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::usart::{Config, BufferedUart, BufferedUartRx, BufferedUartTx};
+use embassy_stm32::usart::{Config, BufferedUart};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::exti::{ExtiInput, AnyChannel, Channel};
-use embassy_stm32::gpio::{AnyPin, Level, Output, Pull, Pin, Speed};
+use embassy_stm32::gpio::{AnyPin, Level, Output, Input, Pull, Pin, Speed};
 use embassy_time::Timer;
 use {defmt_rtt as _, panic_probe as _};
-use embedded_io_async::BufRead;
 use embedded_io_async::{Read, Write};
 use static_cell::StaticCell;
-use embedded_io::Write;
-use crate::usart::Error;
 
 bind_interrupts!(struct Irqs {
     USART2 => usart::BufferedInterruptHandler<peripherals::USART2>;
@@ -36,7 +33,7 @@ async fn blinky(pin: AnyPin) {
 
 #[embassy_executor::task]
 async fn btn(pin: AnyPin, ch: AnyChannel) {
-    let mut button = ExtiInput::new(pin, ch, Pull::Up);
+    let mut button = ExtiInput::new(Input::new(pin, Pull::Up), ch);
 
     info!("Press the USER button...");
 
