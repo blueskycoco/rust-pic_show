@@ -33,7 +33,7 @@ async fn blinky(pin: AnyPin) {
 
 #[embassy_executor::task]
 async fn btn(pin: AnyPin, ch: AnyChannel) {
-    let mut button = ExtiInput::new(Input::new(pin, Pull::Up), ch);
+    let mut button = ExtiInput::new(pin, ch, Pull::Up);
 
     info!("Press the USER button...");
 
