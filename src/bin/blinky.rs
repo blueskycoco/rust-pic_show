@@ -95,7 +95,7 @@ async fn usr_init(usart: &mut Uart<'_, embassy_stm32::mode::Async>) -> bool {
 */
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    /*let mut config = embassy_stm32::Config::default();
+    let mut config = embassy_stm32::Config::default();
     {
         use embassy_stm32::rcc::*;
         config.rcc.hse = Some(Hse {
@@ -113,8 +113,8 @@ async fn main(spawner: Spawner) {
         config.rcc.apb1_pre = APBPrescaler::DIV2;
         config.rcc.apb2_pre = APBPrescaler::DIV1;
     }
-    let p = embassy_stm32::init(config);*/
-    let p = embassy_stm32::init(Default::default());
+    let p = embassy_stm32::init(config);
+    //let p = embassy_stm32::init(Default::default());
 
     spawner.spawn(blinky(p.PB0.degrade())).unwrap();
     let config = Config::default();
