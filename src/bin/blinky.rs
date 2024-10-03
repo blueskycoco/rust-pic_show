@@ -117,7 +117,8 @@ async fn main(spawner: Spawner) {
     //let p = embassy_stm32::init(Default::default());
 
     spawner.spawn(blinky(p.PB0.degrade())).unwrap();
-    let config = Config::default();
+    let mut config = Config::default();
+    config.baudrate = 460800;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
@@ -144,6 +145,7 @@ async fn main(spawner: Spawner) {
     unwrap!(usr_rx.read(&mut s).await);
     // waiting finish
     Timer::after_millis(500).await;
+    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+uart=460800,8,1,NONE,NFC\r", &mut s).await;
     usr_cmd(&mut usr_rx, &mut usr_tx, "at+wmode=sta\r", &mut s).await;
     //usr_cmd(&mut usart, "at+netp=TCP,Server,1234,172.20.10.2\r", &mut s).await;
     usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcpdis=on\r", &mut s).await;
