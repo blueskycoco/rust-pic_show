@@ -25,6 +25,26 @@ heapless = { version = "0.8", default-features = false }
 embedded-hal = "0.2.6"
 static_cell = { version = "2" }
 md5-rs = "0.1.5"
+display-interface = { version = "0.4" }
+embedded-graphics = "0.7.1"
+
+[dependencies.embedded-graphics-core]
+version = "0.3"
+optional = true
+
+[features]
+default = ["graphics"]
+graphics = ["embedded-graphics-core"]
+
+[dependencies.ili9325]
+version = "0.1.0"
+path = "../rust-ili9325"
+
+[dependencies.cortex-m-semihosting]
+version = "0.5.0"
+
+[dependencies.tinybmp]
+version = "0.3.1"
 
 [profile.release]
 debug = 2

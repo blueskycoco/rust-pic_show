@@ -14,6 +14,139 @@ use static_cell::StaticCell;
 use md5_rs::Context;
 use {defmt_rtt as _, panic_probe as _};
 
+/* display */
+use embedded_graphics::{
+    image::Image,
+    mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+    pixelcolor::Rgb565,
+    prelude::*,
+    primitives::{Circle, PrimitiveStyleBuilder, Rectangle, Triangle},
+    text::Text,
+};
+use ili9325::Ili9325;
+pub use ili9325::{DisplaySize240x320, DisplaySize320x240};
+
+pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
+use embedded_hal::blocking::delay::{DelayMs, DelayUs};
+use embedded_hal::digital::v2::{InputPin, OutputPin};
+use tinybmp::Bmp;
+
+type ResultPin<T = ()> = core::result::Result<T, DisplayError>;
+pub struct ParallelStm32GpioIntf<DC, WR, CS, RD> {
+    gpio: GPIOB,
+    dc: DC,
+    wr: WR,
+    cs: CS,
+    rd: RD,
+}
+
+impl<DC, WR, CS, RD> ParallelStm32GpioIntf<DC, WR, CS, RD>
+where
+    DC: OutputPin,
+    WR: OutputPin,
+    CS: OutputPin,
+    RD: OutputPin,
+{
+    /// Create new parallel GPIO interface for communication with a display driver
+    pub fn new(
+        delay: &mut dyn DelayMs<u16>,
+        gpio: GPIOB,
+        mut dc: DC,
+        mut wr: WR,
+        mut cs: CS,
+        mut rd: RD,
+    ) -> Self {
+        // config gpiob pushpull output, high speed.
+        //writeln!(tx, "in ParallelStm32GpioIntf\r\n").unwrap();
+        let _ = gpio.moder.write(|w| unsafe { w.bits(0x55555555) });
+        let _ = gpio.pupdr.write(|w| unsafe { w.bits(0x55555555) });
+        let _ = gpio.ospeedr.write(|w| unsafe { w.bits(0xffffffff) });
+        //read id first
+        //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
+        let _ = cs.set_low().map_err(|_| DisplayError::DCError);
+        let _ = dc.set_low().map_err(|_| DisplayError::DCError);
+        let _ = rd.set_high().map_err(|_| DisplayError::DCError);
+        let _ = wr.set_low().map_err(|_| DisplayError::BusWriteError);
+        let _ = gpio.odr.write(|w| unsafe { w.bits(0x00 as u32) });
+        let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
+        let _ = cs.set_high().map_err(|_| DisplayError::DCError);
+
+        let _ = gpio.moder.write(|w| unsafe { w.bits(0x00 as u32) });
+        //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
+        let _ = cs.set_low().map_err(|_| DisplayError::DCError);
+        let _ = dc.set_high().map_err(|_| DisplayError::DCError);
+        let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
+        let _ = rd.set_low().map_err(|_| DisplayError::DCError);
+        delay.delay_ms(1);
+        info!("ili9325 id: {:#x}\r", gpio.idr.read().bits());
+        let _ = gpio.moder.write(|w| unsafe { w.bits(0x55555555) });
+        //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
+        let _ = rd.set_high().map_err(|_| DisplayError::DCError);
+        let _ = cs.set_high().map_err(|_| DisplayError::DCError);
+        Self {
+            gpio,
+            dc,
+            wr,
+            cs,
+            rd,
+        }
+    }
+
+    /// Consume the display interface and return
+    /// the bus and GPIO pins used by it
+    pub fn release(self) -> (DC, WR, CS, RD) {
+        (self.dc, self.wr, self.cs, self.rd)
+    }
+
+    fn write_iter(&mut self, iter: impl Iterator<Item = u16>) -> ResultPin {
+        for value in iter {
+            let _ = self.cs.set_low().map_err(|_| DisplayError::DCError);
+            let _ = self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
+            let _ = self.gpio.odr.write(|w| unsafe { w.bits(value as u32) });
+            //writeln!(self.tx, "tx: {:#x}\r", value).unwrap();
+            let _ = self
+                .wr
+                .set_high()
+                .map_err(|_| DisplayError::BusWriteError)?;
+            let _ = self.cs.set_high().map_err(|_| DisplayError::DCError);
+        }
+
+        Ok(())
+    }
+
+    fn write_data(&mut self, data: DataFormat<'_>) -> ResultPin {
+        match data {
+            DataFormat::U8(slice) => self.write_iter(slice.iter().copied().map(u16::from)),
+            DataFormat::U8Iter(iter) => self.write_iter(iter.map(u16::from)),
+            DataFormat::U16(slice) => self.write_iter(slice.iter().copied()),
+            DataFormat::U16BE(slice) => self.write_iter(slice.iter().copied()),
+            DataFormat::U16LE(slice) => self.write_iter(slice.iter().copied()),
+            DataFormat::U16BEIter(iter) => self.write_iter(iter),
+            DataFormat::U16LEIter(iter) => self.write_iter(iter),
+            _ => Err(DisplayError::DataFormatNotImplemented),
+        }
+    }
+}
+
+impl<DC, WR, CS, RD> WriteOnlyDataCommand for ParallelStm32GpioIntf<DC, WR, CS, RD>
+where
+    DC: OutputPin,
+    WR: OutputPin,
+    CS: OutputPin,
+    RD: OutputPin,
+{
+    fn send_commands(&mut self, cmds: DataFormat<'_>) -> ResultPin {
+        self.dc.set_low().map_err(|_| DisplayError::DCError)?;
+        self.write_data(cmds)
+    }
+
+    fn send_data(&mut self, buf: DataFormat<'_>) -> ResultPin {
+        self.dc.set_high().map_err(|_| DisplayError::DCError)?;
+        self.write_data(buf)
+    }
+}
+/* display */
+
 bind_interrupts!(struct Irqs {
     USART1 => usart::BufferedInterruptHandler<peripherals::USART1>;
 });
