@@ -6,6 +6,7 @@ use embassy_executor::Spawner;
 use embassy_stm32::usart::{Config, BufferedUart, BufferedUartRx, BufferedUartTx};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::gpio::{Level, Output, Speed, Pin, AnyPin};
+use embassy_stm32::Peripherals;
 use embassy_time::Timer;
 use embassy_stm32::time::Hertz;
 use embedded_io_async::BufRead;
@@ -25,22 +26,23 @@ use embedded_graphics::{
 };
 use ili9325::Ili9325;
 pub use ili9325::{DisplaySize240x320, DisplaySize320x240};
-
+use embassy_stm32::peripherals::PB0;
 pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use tinybmp::Bmp;
 
 type ResultPin<T = ()> = core::result::Result<T, DisplayError>;
-pub struct ParallelStm32GpioIntf<DC, WR, CS, RD> {
-    gpio: GPIOB,
+pub struct ParallelStm32GpioIntf<'a, DC, WR, CS, RD> {
     dc: DC,
     wr: WR,
     cs: CS,
     rd: RD,
+    pb0: Output<'a>,
+    pb1: Output<'a>,
 }
 
-impl<DC, WR, CS, RD> ParallelStm32GpioIntf<DC, WR, CS, RD>
+impl<'a, DC, WR, CS, RD> ParallelStm32GpioIntf<'a, DC, WR, CS, RD>
 where
     DC: OutputPin,
     WR: OutputPin,
@@ -50,7 +52,7 @@ where
     /// Create new parallel GPIO interface for communication with a display driver
     pub fn new(
         delay: &mut dyn DelayMs<u16>,
-        gpio: GPIOB,
+        p: Peripherals,
         mut dc: DC,
         mut wr: WR,
         mut cs: CS,
@@ -58,7 +60,9 @@ where
     ) -> Self {
         // config gpiob pushpull output, high speed.
         //writeln!(tx, "in ParallelStm32GpioIntf\r\n").unwrap();
-        let _ = gpio.moder.write(|w| unsafe { w.bits(0x55555555) });
+        let mut pb0 = Output::new(p.PB0, Level::High, Speed::VeryHigh);
+        let mut pb1 = Output::new(p.PB1, Level::High, Speed::VeryHigh);
+        /*let _ = gpio.moder.write(|w| unsafe { w.bits(0x55555555) });
         let _ = gpio.pupdr.write(|w| unsafe { w.bits(0x55555555) });
         let _ = gpio.ospeedr.write(|w| unsafe { w.bits(0xffffffff) });
         //read id first
@@ -78,17 +82,19 @@ where
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = rd.set_low().map_err(|_| DisplayError::DCError);
         delay.delay_ms(1);
+        //info!("ili9325 id: {:#x}\r", n.idr().read().idr(gpio.pin().inoto()));
         info!("ili9325 id: {:#x}\r", gpio.idr.read().bits());
         let _ = gpio.moder.write(|w| unsafe { w.bits(0x55555555) });
         //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
-        Self {
-            gpio,
+        */Self {
             dc,
             wr,
             cs,
             rd,
+            pb0,
+            pb1,
         }
     }
 
@@ -102,7 +108,7 @@ where
         for value in iter {
             let _ = self.cs.set_low().map_err(|_| DisplayError::DCError);
             let _ = self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
-            let _ = self.gpio.odr.write(|w| unsafe { w.bits(value as u32) });
+            //let _ = self.gpio.odr.write(|w| unsafe { w.bits(value as u32) });
             //writeln!(self.tx, "tx: {:#x}\r", value).unwrap();
             let _ = self
                 .wr
@@ -128,7 +134,7 @@ where
     }
 }
 
-impl<DC, WR, CS, RD> WriteOnlyDataCommand for ParallelStm32GpioIntf<DC, WR, CS, RD>
+impl<'a, DC, WR, CS, RD> WriteOnlyDataCommand for ParallelStm32GpioIntf<'a, DC, WR, CS, RD>
 where
     DC: OutputPin,
     WR: OutputPin,
