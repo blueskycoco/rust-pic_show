@@ -15,7 +15,7 @@ use md5_rs::Context;
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
-    USART2 => usart::BufferedInterruptHandler<peripherals::USART2>;
+    USART1 => usart::BufferedInterruptHandler<peripherals::USART1>;
 });
 
 fn clear(ary: &mut [u8]) {
@@ -125,7 +125,7 @@ async fn main(spawner: Spawner) {
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let rx_buf = &mut RX_BUF.init([0; 128])[..];
-    let usart = BufferedUart::new(p.USART2, Irqs, p.PA3, p.PA2, tx_buf,
+    let usart = BufferedUart::new(p.USART1, Irqs, p.PA10, p.PA9, tx_buf,
                                       rx_buf, config).unwrap();
     let (mut usr_tx, mut usr_rx) = usart.split();
     //let mut usart = Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7,
@@ -158,7 +158,7 @@ async fn main(spawner: Spawner) {
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp\r", &mut s).await;
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcplk\r", &mut s).await;
         let tcplk = core::str::from_utf8(&s).unwrap();
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+ping=172.20.10.13\r", &mut ss).await;
+        usr_cmd(&mut usr_rx, &mut usr_tx, "at+ping=172.20.10.2\r", &mut ss).await;
         let ping = core::str::from_utf8(&ss).unwrap();
         if ping.contains("Success") && tcplk.contains("on") {
             info!("network stable!");
