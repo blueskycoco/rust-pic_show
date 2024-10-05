@@ -5,33 +5,26 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::usart::{Config, BufferedUart, BufferedUartRx, BufferedUartTx};
 use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_stm32::gpio::{Level, Output, Speed, Pin, AnyPin};
-use embassy_stm32::{Peripherals, pac};
+use embassy_stm32::gpio::{Level, Output, Pin, Speed, AnyPin};
+use embassy_stm32::pac;
 use embassy_time::Timer;
 use embassy_stm32::time::Hertz;
-use embedded_io_async::BufRead;
 use embedded_io_async::{Read, Write};
 use static_cell::StaticCell;
 use md5_rs::Context;
 use {defmt_rtt as _, panic_probe as _};
 
 /* display */
-use crate::pac::gpio::regs::{Moder, Pupdr, Ospeedr, Odr};
-use cortex_m::asm::delay;
 use embedded_graphics::{
     image::Image,
-    mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
-    primitives::{Circle, PrimitiveStyleBuilder, Rectangle, Triangle},
-    text::Text,
+    primitives::{PrimitiveStyleBuilder, Rectangle},
 };
 use ili9325::Ili9325;
 pub use ili9325::{DisplaySize240x320, DisplaySize320x240};
-use embassy_stm32::peripherals::PB0;
 pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
-use embedded_hal::blocking::delay::{DelayMs, DelayUs};
-use embedded_hal::digital::v2::{InputPin, OutputPin};
+use embedded_hal::digital::v2::OutputPin;
 use tinybmp::Bmp;
 
 type ResultPin<T = ()> = core::result::Result<T, DisplayError>;
@@ -57,31 +50,25 @@ where
         mut rd: RD,
     ) -> Self {
         // config gpiob pushpull output, high speed.
-        //writeln!(tx, "in ParallelStm32GpioIntf\r\n").unwrap();
-        let _ = pac::GPIOB.moder().write(|w| unsafe { w.0 = 0x55555555; });
-        let _ = pac::GPIOB.pupdr().write(|w| unsafe { w.0 = 0x55555555; });
-        let _ = pac::GPIOB.ospeedr().write(|w| unsafe { w.0 = 0xffffffff; });
-        //read id first
-        //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
+        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
+        let _ = pac::GPIOB.pupdr().write(|w| { w.0 = 0x55555555; });
+        let _ = pac::GPIOB.ospeedr().write(|w| { w.0 = 0xffffffff; });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_low().map_err(|_| DisplayError::DCError);
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_low().map_err(|_| DisplayError::BusWriteError);
-        let _ = pac::GPIOB.odr().write(|w| unsafe { w.0 = 0x00 as u32; });
+        let _ = pac::GPIOB.odr().write(|w| { w.0 = 0x00 as u32; });
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
 
-        let _ = pac::GPIOB.moder().write(|w| unsafe { w.0 = 0x00 as u32; });
-        //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
+        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x00 as u32; });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = rd.set_low().map_err(|_| DisplayError::DCError);
         //Timer::after_millis(1).await;
-        //info!("ili9325 id: {:#x}\r", n.idr().read().idr(gpio.pin().inoto()));
-        //info!("ili9325 id: {:#x}\r", pac::GPIOB.idr().read().idr(0 as usize));
-        let _ = pac::GPIOB.moder().write(|w| unsafe { w.0 = 0x55555555; });
-        //writeln!(tx, "moder: {:#x}\r", gpio.moder.read().bits()).unwrap();
+        //cortex_m::asm::delay(50000);
+        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
         Self {
@@ -102,12 +89,8 @@ where
         for value in iter {
             let _ = self.cs.set_low().map_err(|_| DisplayError::DCError);
             let _ = self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
-            let _ = pac::GPIOB.odr().write(|w| unsafe { w.0 = value as u32; });
-            //writeln!(self.tx, "tx: {:#x}\r", value).unwrap();
-            let _ = self
-                .wr
-                .set_high()
-                .map_err(|_| DisplayError::BusWriteError)?;
+            let _ = pac::GPIOB.odr().write(|w| { w.0 = value as u32; });
+            let _ = self.wr.set_high().map_err(|_| DisplayError::BusWriteError)?;
             let _ = self.cs.set_high().map_err(|_| DisplayError::DCError);
         }
 
@@ -251,7 +234,6 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(config);
     //let p = embassy_stm32::init(Default::default());
 
-    //spawner.spawn(blinky(p.PB0.degrade())).unwrap();
     let mut config = Config::default();
     config.baudrate = 460800;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
@@ -277,28 +259,17 @@ async fn main(spawner: Spawner) {
 
     let mut ili9325 = Ili9325::new(interface, DisplaySize240x320).unwrap();
     let _ = ili9325.clear(Rgb565::BLACK);
-    let yoffset = 24;
     let x_max = (ili9325.width() as i32) - 1;
     let y_max = (ili9325.height() as i32) - 1;
-
-    let red_style = PrimitiveStyleBuilder::new()
-        .stroke_color(Rgb565::RED)
-        .stroke_width(2)
-        .build();
 
     let green_style = PrimitiveStyleBuilder::new()
         .stroke_color(Rgb565::GREEN)
         .stroke_width(2)
         .build();
 
-    let blue_style = PrimitiveStyleBuilder::new()
-        .stroke_color(Rgb565::BLUE)
-        .stroke_width(2)
-        .build();
-
     // screen outline
     Rectangle::with_corners(Point::new(0, 0), Point::new(x_max, y_max))
-        .into_styled(red_style)
+        .into_styled(green_style)
         .draw(&mut ili9325)
         .unwrap();
     // reset usr_wifi232_t
@@ -337,6 +308,8 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(2000).await;
     }
     let mut bmp_raw  = [0u8; 7840];
+    //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
+    //let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
@@ -350,6 +323,7 @@ async fn main(spawner: Spawner) {
             error!("R {:?}", remote_dig);
         } else {
             info!("bmp_raw send ok");
+            //led.toggle();
             let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
             let y: i32 = (bmp_raw[20] as i32) << 8 | bmp_raw[21] as i32;
             let bmp = Bmp::from_slice(&bmp_raw[22..]);
@@ -360,7 +334,7 @@ async fn main(spawner: Spawner) {
                           im.draw(&mut ili9325).unwrap();
                   info!("display logo ok {} {}\r", x, y);
                 }
-                Err(error) => {
+                Err(_error) => {
                   info!("display logo failed {} {}\r", x, y);
                 }
             }
