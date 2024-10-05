@@ -18,6 +18,8 @@ use {defmt_rtt as _, panic_probe as _};
 use embedded_graphics::{
     image::Image,
     pixelcolor::Rgb565,
+    mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+    text::Text,
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
 };
@@ -67,7 +69,6 @@ where
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = rd.set_low().map_err(|_| DisplayError::DCError);
         //Timer::after_millis(1).await;
-        //cortex_m::asm::delay(50000);
         let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
@@ -173,69 +174,14 @@ async fn usr_cmd(rx: &mut BufferedUartRx<'_>,
         }
     }
 }
-/*
-async fn usr_init(usart: &mut Uart<'_, embassy_stm32::mode::Async>) -> bool {
-    let mut s = [0u8; 128];
-    unwrap!(usart.write("+++".as_bytes()).await);
-    unwrap!(usart.read_until_idle(&mut s).await);
-    unwrap!(usart.write("a".as_bytes()).await);
-    unwrap!(usart.read_until_idle(&mut s).await);
 
-    Timer::after_millis(300).await;
-    usr_cmd(usart, "at+wskey=wpa2psk,aes,DUBB-JcJf-kU4g-C3IY\r", &mut s).await;
-    usr_cmd(usart, "at+wsssid=8848\r", &mut s).await;
-    usr_cmd(usart, "at+wmode=sta\r", &mut s).await;
-    loop {
-        unwrap!(usart.write("at+ping=172.20.10.6\r".as_bytes()).await);
-        loop {
-            unwrap!(usart.read_until_idle(&mut s).await);
-            let str_resp = core::str::from_utf8(&s).unwrap();
-            info!("{}", str_resp);
-            if str_resp.contains("Success") {
-                usr_cmd(usart, "at+wann\r", &mut s).await;
-                usr_cmd(usart, "at+netp=tcp,server,1234,172.20.10.8\r", &mut s)
-                        .await;
-                usr_cmd(usart, "at+netp\r", &mut s).await;
-                //usr_cmd(usart, "at+tcpdis=on\r").await;
-                usr_cmd(usart, "at+tcpdis\r", &mut s).await;
-                Timer::after_millis(100).await;
-                return true;
-            } else if str_resp.contains("+ok") || str_resp.contains("+ERR") {
-                break;
-            }
-            clear(&mut s);
-        }
-        Timer::after_millis(1000).await;
-    }
-}
-*/
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut config = embassy_stm32::Config::default();
-    {
-        use embassy_stm32::rcc::*;
-        config.rcc.hse = Some(Hse {
-            freq: Hertz(8_000_000),
-            mode: HseMode::Bypass,
-        });
-        config.rcc.pll_src = PllSource::HSE;
-        config.rcc.pll = Some(Pll {
-            prediv: PllPreDiv::DIV4,
-            mul: PllMul::MUL180,
-            divp: Some(PllPDiv::DIV2), // 8mhz / 4 * 180 / 2 = 180Mhz.
-            divq: None,
-            divr: None,
-        });
-        config.rcc.ahb_pre = AHBPrescaler::DIV1;
-        config.rcc.apb1_pre = APBPrescaler::DIV4;
-        config.rcc.apb2_pre = APBPrescaler::DIV2;
-        config.rcc.sys = Sysclk::PLL1_P;
-    }
     let p = embassy_stm32::init(config);
-    //let p = embassy_stm32::init(Default::default());
 
     let mut config = Config::default();
-    config.baudrate = 460800;
+    config.baudrate = 115200;//460800;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
@@ -272,6 +218,13 @@ async fn main(spawner: Spawner) {
         .into_styled(green_style)
         .draw(&mut ili9325)
         .unwrap();
+    Text::new(
+        "Hello Eva, I love Eva",
+        Point::new(10, 200),
+        MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::GREEN),
+    )
+    .draw(&mut ili9325)
+    .unwrap();
     // reset usr_wifi232_t
     Timer::after_millis(200).await;
     rst.set_low();
@@ -287,7 +240,11 @@ async fn main(spawner: Spawner) {
     unwrap!(usr_rx.read(&mut s).await);
     // waiting finish
     Timer::after_millis(500).await;
-    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+uart=460800,8,1,NONE,NFC\r", &mut s).await;
+    usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcpdis=on\r", &mut s).await;
+    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+uart=380400,8,1,NONE,NFC\r", &mut s).await;
+    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+wsssid=8848\r", &mut s).await;
+    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+wskey=wpa2psk,aes,DUBB-JcJf-kU4g-C3IY\r", &mut s).await;
+    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp=tcp,server,1234,172.20.10.8\r", &mut s).await;
     usr_cmd(&mut usr_rx, &mut usr_tx, "at+wmode=sta\r", &mut s).await;
     //usr_cmd(&mut usart, "at+netp=TCP,Server,1234,172.20.10.2\r", &mut s).await;
     usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcpdis=on\r", &mut s).await;
@@ -322,7 +279,7 @@ async fn main(spawner: Spawner) {
             error!("L {:?}", digest);
             error!("R {:?}", remote_dig);
         } else {
-            info!("bmp_raw send ok");
+            //info!("bmp_raw send ok");
             //led.toggle();
             let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
             let y: i32 = (bmp_raw[20] as i32) << 8 | bmp_raw[21] as i32;
