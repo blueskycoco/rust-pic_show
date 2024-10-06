@@ -279,7 +279,7 @@ async fn main(spawner: Spawner) {
             error!("L {:?}", digest);
             error!("R {:?}", remote_dig);
         } else {
-            //info!("bmp_raw send ok");
+            info!("bmp_raw send ok");
             //led.toggle();
             let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
             let y: i32 = (bmp_raw[20] as i32) << 8 | bmp_raw[21] as i32;
