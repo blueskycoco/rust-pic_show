@@ -298,9 +298,9 @@ async fn main(spawner: Spawner) {
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp\r", &mut s).await;
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcplk\r", &mut s).await;
         let tcplk = core::str::from_utf8(&s).unwrap();
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+ping=192.168.1.8\r", &mut ss).await;
-        let ping = core::str::from_utf8(&ss).unwrap();
-        if ping.contains("Success") && tcplk.contains("on") {
+        //usr_cmd(&mut usr_rx, &mut usr_tx, "at+ping=192.168.1.8\r", &mut ss).await;
+        //let ping = core::str::from_utf8(&ss).unwrap();
+        if /*ping.contains("Success") && */tcplk.contains("on") {
             info!("network stable!");
             usr_cmd(&mut usr_rx, &mut usr_tx, "at+entm\r", &mut s).await;
             break;
