@@ -307,7 +307,7 @@ async fn main(spawner: Spawner) {
         }
         Timer::after_millis(2000).await;
     }
-    let mut bmp_raw  = [0u8; 7840];
+    let mut bmp_raw  = [0u8; 15520];
     //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
     //let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
