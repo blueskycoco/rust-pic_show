@@ -7,7 +7,7 @@ use embassy_stm32::usart::{Config, BufferedUart, BufferedUartRx, BufferedUartTx}
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_stm32::gpio::{Level, Output, Pin, Speed, AnyPin};
 use embassy_stm32::pac;
-use embassy_time::Timer;
+use embassy_time::{Timer, Delay};
 use embassy_stm32::time::Hertz;
 use embedded_io_async::{Read, Write};
 use static_cell::StaticCell;
@@ -18,8 +18,10 @@ use {defmt_rtt as _, panic_probe as _};
 use embedded_graphics::{
     image::Image,
     pixelcolor::Rgb565,
+    mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
+    text::Text,
 };
 use ili9325::Ili9325;
 pub use ili9325::{DisplaySize240x320, DisplaySize320x240};
@@ -257,7 +259,7 @@ async fn main(spawner: Spawner) {
         pc6,
     );
 
-    let mut ili9325 = Ili9325::new(interface, DisplaySize240x320).unwrap();
+    let mut ili9325 = Ili9325::new(&mut Delay, interface, DisplaySize240x320).unwrap();
     let _ = ili9325.clear(Rgb565::BLACK);
     let x_max = (ili9325.width() as i32) - 1;
     let y_max = (ili9325.height() as i32) - 1;
@@ -295,6 +297,19 @@ async fn main(spawner: Spawner) {
     loop {
         let mut ss = [0u8; 128];
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+wann\r", &mut s).await;
+        let ip = core::str::from_utf8(&s).unwrap();
+        if ip.contains("DHCP") {
+            info!("ip {}", ip[18..29]);
+            Text::new(
+                &ip[18..29],
+                Point::new(10, 200),
+                MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::GREEN),
+            )
+            .draw(&mut ili9325)
+            .unwrap();
+        } else {
+            info!("no ip");
+        }
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp\r", &mut s).await;
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcplk\r", &mut s).await;
         let tcplk = core::str::from_utf8(&s).unwrap();
@@ -309,7 +324,7 @@ async fn main(spawner: Spawner) {
     }
     let mut bmp_raw  = [0u8; 15520];
     //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
-    //let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
+    let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
@@ -321,9 +336,16 @@ async fn main(spawner: Spawner) {
             error!("md5 missmatch");
             error!("L {:?}", digest);
             error!("R {:?}", remote_dig);
+            Text::new(
+                "MD5 MissMatch",
+                Point::new(10, 100),
+                MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::RED),
+            )
+            .draw(&mut ili9325)
+            .unwrap();
         } else {
-            info!("bmp_raw send ok");
-            //led.toggle();
+            info!("bmp_raw recv ok");
+            led.toggle();
             let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
             let y: i32 = (bmp_raw[20] as i32) << 8 | bmp_raw[21] as i32;
             let bmp = Bmp::from_slice(&bmp_raw[22..]);
@@ -335,7 +357,7 @@ async fn main(spawner: Spawner) {
                   info!("display logo ok {} {}\r", x, y);
                 }
                 Err(_error) => {
-                  info!("display logo failed {} {}\r", x, y);
+                  error!("display logo failed {} {}\r", x, y);
                 }
             }
         }
