@@ -9,6 +9,7 @@ use embassy_stm32::gpio::{Level, Output, Pin, Speed, AnyPin};
 use embassy_stm32::pac;
 use embassy_time::{Timer, Delay};
 use embassy_stm32::time::Hertz;
+use embassy_stm32::wdg::IndependentWatchdog;
 use embedded_io_async::{Read, Write};
 use static_cell::StaticCell;
 use md5_rs::Context;
@@ -236,6 +237,8 @@ async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(config);
     //let p = embassy_stm32::init(Default::default());
 
+    let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
+    wdt.unleash();
     let mut config = Config::default();
     config.baudrate = 460800;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
@@ -296,6 +299,7 @@ async fn main(spawner: Spawner) {
 
     loop {
         let mut ss = [0u8; 128];
+        wdt.pet();
         usr_cmd(&mut usr_rx, &mut usr_tx, "at+wann\r", &mut s).await;
         let ip = core::str::from_utf8(&s).unwrap();
         if ip.contains("DHCP") {
@@ -326,6 +330,7 @@ async fn main(spawner: Spawner) {
     //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
+        wdt.pet();
         unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
         let mut ctx = Context::new();
