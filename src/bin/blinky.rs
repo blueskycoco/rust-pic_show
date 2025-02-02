@@ -262,7 +262,7 @@ async fn main(spawner: Spawner) {
         pc6,
     );
 
-    let mut ili9325 = Ili9325::new(&mut Delay, interface, DisplaySize240x320).unwrap();
+    let mut ili9325 = Ili9325::new(interface, DisplaySize240x320).unwrap();
     let _ = ili9325.clear(Rgb565::BLACK);
     let x_max = (ili9325.width() as i32) - 1;
     let y_max = (ili9325.height() as i32) - 1;
@@ -348,6 +348,9 @@ async fn main(spawner: Spawner) {
             )
             .draw(&mut ili9325)
             .unwrap();
+            while true {
+            unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
+            }
         } else {
             info!("bmp_raw recv ok");
             led.toggle();
