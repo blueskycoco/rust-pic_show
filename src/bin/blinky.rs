@@ -327,7 +327,7 @@ async fn main(spawner: Spawner) {
         Timer::after_millis(2000).await;
     }
     //let mut bmp_raw  = [0u8; 15520];
-    let mut bmp_raw  = [0u8; 30880];
+    let mut bmp_raw  = [0u8; 76961];
     //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
@@ -335,9 +335,9 @@ async fn main(spawner: Spawner) {
         unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
         let mut ctx = Context::new();
-        ctx.read(&bmp_raw[22..]);
+        ctx.read(&bmp_raw[23..]);
         let digest = ctx.finish();
-        let remote_dig = &bmp_raw[2..18];
+        let remote_dig = &bmp_raw[3..19];
         if digest != remote_dig {
             error!("md5 missmatch");
             error!("L {:?}", digest);
@@ -355,9 +355,9 @@ async fn main(spawner: Spawner) {
         } else {
             info!("bmp_raw recv ok");
             led.toggle();
-            let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
-            let y: i32 = (bmp_raw[20] as i32) << 8 | bmp_raw[21] as i32;
-            let bmp = Bmp::from_slice(&bmp_raw[22..]);
+            let x: i32 = (bmp_raw[19] as i32) << 8 | bmp_raw[20] as i32;
+            let y: i32 = (bmp_raw[21] as i32) << 8 | bmp_raw[22] as i32;
+            let bmp = Bmp::from_slice(&bmp_raw[23..]);
             match bmp {
                 Ok(bmp_byte) => {
                   let im: Image<Bmp<Rgb565>> =
