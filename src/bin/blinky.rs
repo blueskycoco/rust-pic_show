@@ -156,32 +156,28 @@ async fn blinky(pin: AnyPin) {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    /*let mut config = embassy_stm32::Config::default();
+    let mut config = embassy_stm32::Config::default();
     {
         use embassy_stm32::rcc::*;
         config.rcc.hse = Some(Hse {
             freq: Hertz(8_000_000),
             mode: HseMode::Bypass,
         });
-        config.rcc.pll_src = PllSource::HSE;
         config.rcc.pll = Some(Pll {
-            prediv: PllPreDiv::DIV4,
-            mul: PllMul::MUL48,
-            divp: Some(PllPDiv::DIV2), // 8mhz / 4 * 180 / 2 = 180Mhz.
-            divq: None,
-            divr: None,
+            src: PllSource::HSE,
+            prediv: PllPreDiv::DIV1,
+            mul: PllMul::MUL6,
         });
         config.rcc.ahb_pre = AHBPrescaler::DIV1;
-        config.rcc.apb1_pre = APBPrescaler::DIV4;
-        config.rcc.apb2_pre = APBPrescaler::DIV2;
+        config.rcc.apb1_pre = APBPrescaler::DIV1;
         config.rcc.sys = Sysclk::PLL1_P;
     }
-    let p = embassy_stm32::init(config);*/
-    let p = embassy_stm32::init(Default::default());
+    let p = embassy_stm32::init(config);
+    //let p = embassy_stm32::init(Default::default());
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
     let mut config = Config::default();
-    config.baudrate = 115200;
+    config.baudrate = 921_600;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
