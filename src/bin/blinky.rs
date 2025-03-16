@@ -181,7 +181,7 @@ async fn main(spawner: Spawner) {
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
     let mut config = Config::default();
-    config.baudrate = 921600;
+    config.baudrate = 115200;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
@@ -226,7 +226,6 @@ async fn main(spawner: Spawner) {
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         wdt.pet();
-        unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
         let mut ctx = Context::new();
         ctx.read(&bmp_raw[22..]);
@@ -264,5 +263,6 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
+        unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
     }
 }
