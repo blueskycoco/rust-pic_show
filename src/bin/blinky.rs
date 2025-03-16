@@ -134,7 +134,7 @@ where
 /* display */
 
 bind_interrupts!(struct Irqs {
-    USART1 => usart::BufferedInterruptHandler<peripherals::USART1>;
+    USART2 => usart::BufferedInterruptHandler<peripherals::USART2>;
 });
 
 fn clear(ary: &mut [u8]) {
@@ -154,67 +154,9 @@ async fn blinky(pin: AnyPin) {
     }
 }
 
-async fn usr_cmd(rx: &mut BufferedUartRx<'_>,
-                    tx: &mut BufferedUartTx<'_>,
-                    cmd: &str,
-                    s: &mut [u8]) {
-    clear(s);
-    unwrap!(tx.write_all(cmd.as_bytes()).await);
-    let mut cnt = 0;
-    loop {
-        let n = rx.read(&mut s[cnt..]).await;
-        match n {
-            Ok(bytes) => cnt = cnt + bytes,
-            Err(e) => info!("read error {}", e),
-        }
-
-        if s.get(cnt - 4) == Some(&b'\r') && s.get(cnt - 3) == Some(&b'\n') &&
-           s.get(cnt - 2) == Some(&b'\r') && s.get(cnt - 1) == Some(&b'\n') {
-            let str_resp = core::str::from_utf8(s).unwrap();
-            info!("{}", str_resp);
-            break;
-        }
-    }
-}
-/*
-async fn usr_init(usart: &mut Uart<'_, embassy_stm32::mode::Async>) -> bool {
-    let mut s = [0u8; 128];
-    unwrap!(usart.write("+++".as_bytes()).await);
-    unwrap!(usart.read_until_idle(&mut s).await);
-    unwrap!(usart.write("a".as_bytes()).await);
-    unwrap!(usart.read_until_idle(&mut s).await);
-
-    Timer::after_millis(300).await;
-    usr_cmd(usart, "at+wskey=wpa2psk,aes,DUBB-JcJf-kU4g-C3IY\r", &mut s).await;
-    usr_cmd(usart, "at+wsssid=8848\r", &mut s).await;
-    usr_cmd(usart, "at+wmode=sta\r", &mut s).await;
-    loop {
-        unwrap!(usart.write("at+ping=172.20.10.6\r".as_bytes()).await);
-        loop {
-            unwrap!(usart.read_until_idle(&mut s).await);
-            let str_resp = core::str::from_utf8(&s).unwrap();
-            info!("{}", str_resp);
-            if str_resp.contains("Success") {
-                usr_cmd(usart, "at+wann\r", &mut s).await;
-                usr_cmd(usart, "at+netp=tcp,server,1234,172.20.10.8\r", &mut s)
-                        .await;
-                usr_cmd(usart, "at+netp\r", &mut s).await;
-                //usr_cmd(usart, "at+tcpdis=on\r").await;
-                usr_cmd(usart, "at+tcpdis\r", &mut s).await;
-                Timer::after_millis(100).await;
-                return true;
-            } else if str_resp.contains("+ok") || str_resp.contains("+ERR") {
-                break;
-            }
-            clear(&mut s);
-        }
-        Timer::after_millis(1000).await;
-    }
-}
-*/
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let mut config = embassy_stm32::Config::default();
+    /*let mut config = embassy_stm32::Config::default();
     {
         use embassy_stm32::rcc::*;
         config.rcc.hse = Some(Hse {
@@ -224,7 +166,7 @@ async fn main(spawner: Spawner) {
         config.rcc.pll_src = PllSource::HSE;
         config.rcc.pll = Some(Pll {
             prediv: PllPreDiv::DIV4,
-            mul: PllMul::MUL180,
+            mul: PllMul::MUL48,
             divp: Some(PllPDiv::DIV2), // 8mhz / 4 * 180 / 2 = 180Mhz.
             divq: None,
             divr: None,
@@ -234,23 +176,21 @@ async fn main(spawner: Spawner) {
         config.rcc.apb2_pre = APBPrescaler::DIV2;
         config.rcc.sys = Sysclk::PLL1_P;
     }
-    let p = embassy_stm32::init(config);
-    //let p = embassy_stm32::init(Default::default());
-
+    let p = embassy_stm32::init(config);*/
+    let p = embassy_stm32::init(Default::default());
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
     let mut config = Config::default();
-    config.baudrate = 460800;
+    config.baudrate = 921600;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let rx_buf = &mut RX_BUF.init([0; 128])[..];
-    let usart = BufferedUart::new(p.USART1, Irqs, p.PA10, p.PA9, tx_buf,
+    let usart = BufferedUart::new(p.USART2, Irqs, p.PA3, p.PA2, tx_buf,
                                       rx_buf, config).unwrap();
     let (mut usr_tx, mut usr_rx) = usart.split();
     //let mut usart = Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7,
     //p.DMA1_CH6, config).unwrap();
-    let mut rst = Output::new(p.PA0, Level::High, Speed::Low);
     let pc8 = Output::new(p.PC8, Level::High, Speed::VeryHigh);
     let pc7 = Output::new(p.PC7, Level::High, Speed::VeryHigh);
     let pc9 = Output::new(p.PC9, Level::High, Speed::VeryHigh);
@@ -277,57 +217,11 @@ async fn main(spawner: Spawner) {
         .into_styled(green_style)
         .draw(&mut ili9325)
         .unwrap();
-    // reset usr_wifi232_t
-    Timer::after_millis(200).await;
-    rst.set_low();
-    Timer::after_millis(300).await;
-    rst.set_high();
-    Timer::after_millis(1500).await;
 
     // enter at command mode
     let mut s = [0u8; 128];
-    unwrap!(usr_tx.write_all("+++".as_bytes()).await);
-    unwrap!(usr_rx.read(&mut s).await);
-    unwrap!(usr_tx.write_all("a".as_bytes()).await);
-    unwrap!(usr_rx.read(&mut s).await);
-    // waiting finish
-    Timer::after_millis(500).await;
-    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+uart=460800,8,1,NONE,NFC\r", &mut s).await;
-    usr_cmd(&mut usr_rx, &mut usr_tx, "at+wmode=sta\r", &mut s).await;
-    usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp=TCP,Server,1234,192.168.1.5\r", &mut s).await;
-    usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcpdis=on\r", &mut s).await;
-
-    loop {
-        let mut ss = [0u8; 128];
-        wdt.pet();
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+wann\r", &mut s).await;
-        let ip = core::str::from_utf8(&s).unwrap();
-        if ip.contains("DHCP") {
-            info!("ip {}", ip[18..29]);
-            Text::new(
-                &ip[18..29],
-                Point::new(10, 200),
-                MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::GREEN),
-            )
-            .draw(&mut ili9325)
-            .unwrap();
-        } else {
-            info!("no ip");
-        }
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp\r", &mut s).await;
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcplk\r", &mut s).await;
-        let tcplk = core::str::from_utf8(&s).unwrap();
-        //usr_cmd(&mut usr_rx, &mut usr_tx, "at+ping=192.168.1.8\r", &mut ss).await;
-        //let ping = core::str::from_utf8(&ss).unwrap();
-        if /*ping.contains("Success") && */tcplk.contains("on") {
-            info!("network stable!");
-            usr_cmd(&mut usr_rx, &mut usr_tx, "at+entm\r", &mut s).await;
-            break;
-        }
-        Timer::after_millis(2000).await;
-    }
-    //let mut bmp_raw  = [0u8; 15520];
-    let mut bmp_raw  = [0u8; 76961];
+    info!("begin to rcv bmp");
+    let mut bmp_raw  = [0u8; 7840];
     //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
@@ -335,9 +229,9 @@ async fn main(spawner: Spawner) {
         unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
         let mut ctx = Context::new();
-        ctx.read(&bmp_raw[23..]);
+        ctx.read(&bmp_raw[22..]);
         let digest = ctx.finish();
-        let remote_dig = &bmp_raw[3..19];
+        let remote_dig = &bmp_raw[2..18];
         if digest != remote_dig {
             error!("md5 missmatch");
             error!("L {:?}", digest);
@@ -355,9 +249,9 @@ async fn main(spawner: Spawner) {
         } else {
             info!("bmp_raw recv ok");
             led.toggle();
-            let x: i32 = (bmp_raw[19] as i32) << 8 | bmp_raw[20] as i32;
-            let y: i32 = (bmp_raw[21] as i32) << 8 | bmp_raw[22] as i32;
-            let bmp = Bmp::from_slice(&bmp_raw[23..]);
+            let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
+            let y: i32 = (bmp_raw[20] as i32) << 8 | bmp_raw[21] as i32;
+            let bmp = Bmp::from_slice(&bmp_raw[22..]);
             match bmp {
                 Ok(bmp_byte) => {
                   let im: Image<Bmp<Rgb565>> =
