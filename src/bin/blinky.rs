@@ -3,31 +3,31 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::usart::{Config, BufferedUart, BufferedUartRx, BufferedUartTx};
-use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_stm32::gpio::{Level, Output, Pin, Speed, AnyPin};
+use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
 use embassy_stm32::pac;
-use embassy_time::{Timer, Delay};
 use embassy_stm32::time::Hertz;
+use embassy_stm32::usart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_time::{Delay, Timer};
 use embedded_io_async::{Read, Write};
-use static_cell::StaticCell;
 use md5_rs::Context;
+use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 /* display */
+pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
 use embedded_graphics::{
     image::Image,
-    pixelcolor::Rgb565,
     mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+    pixelcolor::Rgb565,
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
     text::Text,
 };
+use embedded_hal::digital::v2::OutputPin;
 use ili9325::Ili9325;
 pub use ili9325::{DisplaySize240x320, DisplaySize320x240};
-pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
-use embedded_hal::digital::v2::OutputPin;
 use tinybmp::Bmp;
 
 type ResultPin<T = ()> = core::result::Result<T, DisplayError>;
@@ -46,40 +46,42 @@ where
     RD: OutputPin,
 {
     /// Create new parallel GPIO interface for communication with a display driver
-    pub fn new(
-        mut dc: DC,
-        mut wr: WR,
-        mut cs: CS,
-        mut rd: RD,
-    ) -> Self {
+    pub fn new(mut dc: DC, mut wr: WR, mut cs: CS, mut rd: RD) -> Self {
         // config gpiob pushpull output, high speed.
-        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
-        let _ = pac::GPIOB.pupdr().write(|w| { w.0 = 0x55555555; });
-        let _ = pac::GPIOB.ospeedr().write(|w| { w.0 = 0xffffffff; });
+        let _ = pac::GPIOB.moder().write(|w| {
+            w.0 = 0x55555555;
+        });
+        let _ = pac::GPIOB.pupdr().write(|w| {
+            w.0 = 0x55555555;
+        });
+        let _ = pac::GPIOB.ospeedr().write(|w| {
+            w.0 = 0xffffffff;
+        });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_low().map_err(|_| DisplayError::DCError);
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_low().map_err(|_| DisplayError::BusWriteError);
-        let _ = pac::GPIOB.odr().write(|w| { w.0 = 0x00 as u32; });
+        let _ = pac::GPIOB.odr().write(|w| {
+            w.0 = 0x00 as u32;
+        });
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
 
-        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x00 as u32; });
+        let _ = pac::GPIOB.moder().write(|w| {
+            w.0 = 0x00 as u32;
+        });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = rd.set_low().map_err(|_| DisplayError::DCError);
         //Timer::after_millis(1).await;
         //cortex_m::asm::delay(50000);
-        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
+        let _ = pac::GPIOB.moder().write(|w| {
+            w.0 = 0x55555555;
+        });
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
-        Self {
-            dc,
-            wr,
-            cs,
-            rd,
-        }
+        Self { dc, wr, cs, rd }
     }
 
     /// Consume the display interface and return
@@ -92,8 +94,13 @@ where
         for value in iter {
             let _ = self.cs.set_low().map_err(|_| DisplayError::DCError);
             let _ = self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
-            let _ = pac::GPIOB.odr().write(|w| { w.0 = value as u32; });
-            let _ = self.wr.set_high().map_err(|_| DisplayError::BusWriteError)?;
+            let _ = pac::GPIOB.odr().write(|w| {
+                w.0 = value as u32;
+            });
+            let _ = self
+                .wr
+                .set_high()
+                .map_err(|_| DisplayError::BusWriteError)?;
             let _ = self.cs.set_high().map_err(|_| DisplayError::DCError);
         }
 
@@ -182,8 +189,7 @@ async fn main(spawner: Spawner) {
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let rx_buf = &mut RX_BUF.init([0; 128])[..];
-    let usart = BufferedUart::new(p.USART2, Irqs, p.PA3, p.PA2, tx_buf,
-                                      rx_buf, config).unwrap();
+    let usart = BufferedUart::new(p.USART2, Irqs, p.PA3, p.PA2, tx_buf, rx_buf, config).unwrap();
     let (mut usr_tx, mut usr_rx) = usart.split();
     //let mut usart = Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7,
     //p.DMA1_CH6, config).unwrap();
@@ -191,12 +197,7 @@ async fn main(spawner: Spawner) {
     let pc7 = Output::new(p.PC7, Level::High, Speed::VeryHigh);
     let pc9 = Output::new(p.PC9, Level::High, Speed::VeryHigh);
     let pc6 = Output::new(p.PC6, Level::High, Speed::VeryHigh);
-    let interface = ParallelStm32GpioIntf::new(
-        pc8,
-        pc7,
-        pc9,
-        pc6,
-    );
+    let interface = ParallelStm32GpioIntf::new(pc8, pc7, pc9, pc6);
 
     let mut ili9325 = Ili9325::new(interface, DisplaySize240x320).unwrap();
     let _ = ili9325.clear(Rgb565::BLACK);
@@ -217,15 +218,18 @@ async fn main(spawner: Spawner) {
     // enter at command mode
     let mut s = [0u8; 128];
     info!("begin to rcv bmp");
-    let mut bmp_raw  = [0u8; 7840];
+    let mut bmp_raw = [0u8; 7840];
     //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         wdt.pet();
+        info!("reading...");
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
+        info!("reading done");
         let mut ctx = Context::new();
         ctx.read(&bmp_raw[22..]);
         let digest = ctx.finish();
+        info!("md5 done");
         let remote_dig = &bmp_raw[2..18];
         if digest != remote_dig {
             error!("md5 missmatch");
@@ -239,7 +243,7 @@ async fn main(spawner: Spawner) {
             .draw(&mut ili9325)
             .unwrap();
             while true {
-            unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
+                unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
             }
         } else {
             info!("bmp_raw recv ok");
@@ -249,13 +253,12 @@ async fn main(spawner: Spawner) {
             let bmp = Bmp::from_slice(&bmp_raw[22..]);
             match bmp {
                 Ok(bmp_byte) => {
-                  let im: Image<Bmp<Rgb565>> =
-                          Image::new(&bmp_byte, Point::new(x, y));
-                          im.draw(&mut ili9325).unwrap();
-                  info!("display logo ok {} {}\r", x, y);
+                    let im: Image<Bmp<Rgb565>> = Image::new(&bmp_byte, Point::new(x, y));
+                    im.draw(&mut ili9325).unwrap();
+                    info!("display logo ok {} {}\r", x, y);
                 }
                 Err(_error) => {
-                  error!("display logo failed {} {}\r", x, y);
+                    error!("display logo failed {} {}\r", x, y);
                 }
             }
         }
