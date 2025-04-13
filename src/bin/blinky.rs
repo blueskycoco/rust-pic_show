@@ -3,31 +3,31 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::usart::{Config, BufferedUart, BufferedUartRx, BufferedUartTx};
-use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_stm32::gpio::{Level, Output, Pin, Speed, AnyPin};
+use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
 use embassy_stm32::pac;
-use embassy_time::{Timer, Delay};
 use embassy_stm32::time::Hertz;
+use embassy_stm32::usart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_time::{Delay, Timer};
 use embedded_io_async::{Read, Write};
-use static_cell::StaticCell;
 use md5_rs::Context;
+use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 /* display */
+pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
 use embedded_graphics::{
     image::Image,
-    pixelcolor::Rgb565,
     mono_font::{ascii::FONT_9X18_BOLD, MonoTextStyle},
+    pixelcolor::Rgb565,
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
     text::Text,
 };
+use embedded_hal::digital::v2::OutputPin;
 use ili9325::Ili9325;
 pub use ili9325::{DisplaySize240x320, DisplaySize320x240};
-pub use display_interface::{DataFormat, DisplayError, WriteOnlyDataCommand};
-use embedded_hal::digital::v2::OutputPin;
 use tinybmp::Bmp;
 
 type ResultPin<T = ()> = core::result::Result<T, DisplayError>;
@@ -46,40 +46,42 @@ where
     RD: OutputPin,
 {
     /// Create new parallel GPIO interface for communication with a display driver
-    pub fn new(
-        mut dc: DC,
-        mut wr: WR,
-        mut cs: CS,
-        mut rd: RD,
-    ) -> Self {
+    pub fn new(mut dc: DC, mut wr: WR, mut cs: CS, mut rd: RD) -> Self {
         // config gpiob pushpull output, high speed.
-        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
-        let _ = pac::GPIOB.pupdr().write(|w| { w.0 = 0x55555555; });
-        let _ = pac::GPIOB.ospeedr().write(|w| { w.0 = 0xffffffff; });
+        let _ = pac::GPIOB.moder().write(|w| {
+            w.0 = 0x55555555;
+        });
+        let _ = pac::GPIOB.pupdr().write(|w| {
+            w.0 = 0x55555555;
+        });
+        let _ = pac::GPIOB.ospeedr().write(|w| {
+            w.0 = 0xffffffff;
+        });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_low().map_err(|_| DisplayError::DCError);
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_low().map_err(|_| DisplayError::BusWriteError);
-        let _ = pac::GPIOB.odr().write(|w| { w.0 = 0x00 as u32; });
+        let _ = pac::GPIOB.odr().write(|w| {
+            w.0 = 0x00 as u32;
+        });
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
 
-        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x00 as u32; });
+        let _ = pac::GPIOB.moder().write(|w| {
+            w.0 = 0x00 as u32;
+        });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = rd.set_low().map_err(|_| DisplayError::DCError);
         //Timer::after_millis(1).await;
         //cortex_m::asm::delay(50000);
-        let _ = pac::GPIOB.moder().write(|w| { w.0 = 0x55555555; });
+        let _ = pac::GPIOB.moder().write(|w| {
+            w.0 = 0x55555555;
+        });
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
-        Self {
-            dc,
-            wr,
-            cs,
-            rd,
-        }
+        Self { dc, wr, cs, rd }
     }
 
     /// Consume the display interface and return
@@ -92,8 +94,13 @@ where
         for value in iter {
             let _ = self.cs.set_low().map_err(|_| DisplayError::DCError);
             let _ = self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
-            let _ = pac::GPIOB.odr().write(|w| { w.0 = value as u32; });
-            let _ = self.wr.set_high().map_err(|_| DisplayError::BusWriteError)?;
+            let _ = pac::GPIOB.odr().write(|w| {
+                w.0 = value as u32;
+            });
+            let _ = self
+                .wr
+                .set_high()
+                .map_err(|_| DisplayError::BusWriteError)?;
             let _ = self.cs.set_high().map_err(|_| DisplayError::DCError);
         }
 
@@ -134,7 +141,7 @@ where
 /* display */
 
 bind_interrupts!(struct Irqs {
-    USART1 => usart::BufferedInterruptHandler<peripherals::USART1>;
+    USART2 => usart::BufferedInterruptHandler<peripherals::USART2>;
 });
 
 fn clear(ary: &mut [u8]) {
@@ -154,64 +161,6 @@ async fn blinky(pin: AnyPin) {
     }
 }
 
-async fn usr_cmd(rx: &mut BufferedUartRx<'_>,
-                    tx: &mut BufferedUartTx<'_>,
-                    cmd: &str,
-                    s: &mut [u8]) {
-    clear(s);
-    unwrap!(tx.write_all(cmd.as_bytes()).await);
-    let mut cnt = 0;
-    loop {
-        let n = rx.read(&mut s[cnt..]).await;
-        match n {
-            Ok(bytes) => cnt = cnt + bytes,
-            Err(e) => info!("read error {}", e),
-        }
-
-        if s.get(cnt - 4) == Some(&b'\r') && s.get(cnt - 3) == Some(&b'\n') &&
-           s.get(cnt - 2) == Some(&b'\r') && s.get(cnt - 1) == Some(&b'\n') {
-            let str_resp = core::str::from_utf8(s).unwrap();
-            info!("{}", str_resp);
-            break;
-        }
-    }
-}
-/*
-async fn usr_init(usart: &mut Uart<'_, embassy_stm32::mode::Async>) -> bool {
-    let mut s = [0u8; 128];
-    unwrap!(usart.write("+++".as_bytes()).await);
-    unwrap!(usart.read_until_idle(&mut s).await);
-    unwrap!(usart.write("a".as_bytes()).await);
-    unwrap!(usart.read_until_idle(&mut s).await);
-
-    Timer::after_millis(300).await;
-    usr_cmd(usart, "at+wskey=wpa2psk,aes,DUBB-JcJf-kU4g-C3IY\r", &mut s).await;
-    usr_cmd(usart, "at+wsssid=8848\r", &mut s).await;
-    usr_cmd(usart, "at+wmode=sta\r", &mut s).await;
-    loop {
-        unwrap!(usart.write("at+ping=172.20.10.6\r".as_bytes()).await);
-        loop {
-            unwrap!(usart.read_until_idle(&mut s).await);
-            let str_resp = core::str::from_utf8(&s).unwrap();
-            info!("{}", str_resp);
-            if str_resp.contains("Success") {
-                usr_cmd(usart, "at+wann\r", &mut s).await;
-                usr_cmd(usart, "at+netp=tcp,server,1234,172.20.10.8\r", &mut s)
-                        .await;
-                usr_cmd(usart, "at+netp\r", &mut s).await;
-                //usr_cmd(usart, "at+tcpdis=on\r").await;
-                usr_cmd(usart, "at+tcpdis\r", &mut s).await;
-                Timer::after_millis(100).await;
-                return true;
-            } else if str_resp.contains("+ok") || str_resp.contains("+ERR") {
-                break;
-            }
-            clear(&mut s);
-        }
-        Timer::after_millis(1000).await;
-    }
-}
-*/
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut config = embassy_stm32::Config::default();
@@ -240,13 +189,12 @@ async fn main(spawner: Spawner) {
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
     let mut config = Config::default();
-    config.baudrate = 460800;
+    config.baudrate = 2_000_000;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let rx_buf = &mut RX_BUF.init([0; 128])[..];
-    let usart = BufferedUart::new(p.USART1, Irqs, p.PA10, p.PA9, tx_buf,
-                                      rx_buf, config).unwrap();
+    let usart = BufferedUart::new(p.USART2, Irqs, p.PA3, p.PA2, tx_buf, rx_buf, config).unwrap();
     let (mut usr_tx, mut usr_rx) = usart.split();
     //let mut usart = Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7,
     //p.DMA1_CH6, config).unwrap();
@@ -255,12 +203,7 @@ async fn main(spawner: Spawner) {
     let pc7 = Output::new(p.PC7, Level::High, Speed::VeryHigh);
     let pc9 = Output::new(p.PC9, Level::High, Speed::VeryHigh);
     let pc6 = Output::new(p.PC6, Level::High, Speed::VeryHigh);
-    let interface = ParallelStm32GpioIntf::new(
-        pc8,
-        pc7,
-        pc9,
-        pc6,
-    );
+    let interface = ParallelStm32GpioIntf::new(pc8, pc7, pc9, pc6);
 
     let mut ili9325 = Ili9325::new(interface, DisplaySize240x320).unwrap();
     let _ = ili9325.clear(Rgb565::BLACK);
@@ -277,62 +220,11 @@ async fn main(spawner: Spawner) {
         .into_styled(green_style)
         .draw(&mut ili9325)
         .unwrap();
-    // reset usr_wifi232_t
-    Timer::after_millis(200).await;
-    rst.set_low();
-    Timer::after_millis(300).await;
-    rst.set_high();
-    Timer::after_millis(1500).await;
 
-    // enter at command mode
-    let mut s = [0u8; 128];
-    unwrap!(usr_tx.write_all("+++".as_bytes()).await);
-    unwrap!(usr_rx.read(&mut s).await);
-    unwrap!(usr_tx.write_all("a".as_bytes()).await);
-    unwrap!(usr_rx.read(&mut s).await);
-    // waiting finish
-    Timer::after_millis(500).await;
-    //usr_cmd(&mut usr_rx, &mut usr_tx, "at+uart=460800,8,1,NONE,NFC\r", &mut s).await;
-    usr_cmd(&mut usr_rx, &mut usr_tx, "at+wmode=sta\r", &mut s).await;
-    usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp=TCP,Server,1234,192.168.1.5\r", &mut s).await;
-    usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcpdis=on\r", &mut s).await;
-
-    loop {
-        let mut ss = [0u8; 128];
-        wdt.pet();
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+wann\r", &mut s).await;
-        let ip = core::str::from_utf8(&s).unwrap();
-        if ip.contains("DHCP") {
-            info!("ip {}", ip[18..29]);
-            Text::new(
-                &ip[18..29],
-                Point::new(10, 200),
-                MonoTextStyle::new(&FONT_9X18_BOLD, Rgb565::GREEN),
-            )
-            .draw(&mut ili9325)
-            .unwrap();
-        } else {
-            info!("no ip");
-        }
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+netp\r", &mut s).await;
-        usr_cmd(&mut usr_rx, &mut usr_tx, "at+tcplk\r", &mut s).await;
-        let tcplk = core::str::from_utf8(&s).unwrap();
-        //usr_cmd(&mut usr_rx, &mut usr_tx, "at+ping=192.168.1.8\r", &mut ss).await;
-        //let ping = core::str::from_utf8(&ss).unwrap();
-        if /*ping.contains("Success") && */tcplk.contains("on") {
-            info!("network stable!");
-            usr_cmd(&mut usr_rx, &mut usr_tx, "at+entm\r", &mut s).await;
-            break;
-        }
-        Timer::after_millis(2000).await;
-    }
-    //let mut bmp_raw  = [0u8; 15520];
-    let mut bmp_raw  = [0u8; 76961];
-    //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
+    let mut bmp_raw = [0u8; 76961];
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         wdt.pet();
-        unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
         unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
         let mut ctx = Context::new();
         ctx.read(&bmp_raw[23..]);
@@ -350,7 +242,7 @@ async fn main(spawner: Spawner) {
             .draw(&mut ili9325)
             .unwrap();
             while true {
-            unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
+                unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
             }
         } else {
             info!("bmp_raw recv ok");
@@ -360,15 +252,15 @@ async fn main(spawner: Spawner) {
             let bmp = Bmp::from_slice(&bmp_raw[23..]);
             match bmp {
                 Ok(bmp_byte) => {
-                  let im: Image<Bmp<Rgb565>> =
-                          Image::new(&bmp_byte, Point::new(x, y));
-                          im.draw(&mut ili9325).unwrap();
-                  info!("display logo ok {} {}\r", x, y);
+                    let im: Image<Bmp<Rgb565>> = Image::new(&bmp_byte, Point::new(x, y));
+                    im.draw(&mut ili9325).unwrap();
+                    info!("display logo ok {} {}\r", x, y);
                 }
                 Err(_error) => {
-                  error!("display logo failed {} {}\r", x, y);
+                    error!("display logo failed {} {}\r", x, y);
                 }
             }
         }
+        unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
     }
 }
