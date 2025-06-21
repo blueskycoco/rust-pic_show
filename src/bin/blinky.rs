@@ -3,13 +3,13 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
+use embassy_stm32::gpio::{AnyPin, Level, Output, Speed};
 use embassy_stm32::pac;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::usart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
+use embassy_stm32::usart::{BufferedUart, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
-use embassy_time::{Delay, Timer};
+use embassy_time::Timer;
 use embedded_io_async::{Read, Write};
 use md5_rs::Context;
 use static_cell::StaticCell;
@@ -48,27 +48,27 @@ where
     /// Create new parallel GPIO interface for communication with a display driver
     pub fn new(mut dc: DC, mut wr: WR, mut cs: CS, mut rd: RD) -> Self {
         // config gpiob pushpull output, high speed.
-        let _ = pac::GPIOB.moder().write(|w| {
+        pac::GPIOB.moder().write(|w| {
             w.0 = 0x55555555;
         });
-        let _ = pac::GPIOB.pupdr().write(|w| {
+        pac::GPIOB.pupdr().write(|w| {
             w.0 = 0x55555555;
         });
-        let _ = pac::GPIOB.ospeedr().write(|w| {
+        pac::GPIOB.ospeedr().write(|w| {
             w.0 = 0xffffffff;
         });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_low().map_err(|_| DisplayError::DCError);
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
         let _ = wr.set_low().map_err(|_| DisplayError::BusWriteError);
-        let _ = pac::GPIOB.odr().write(|w| {
-            w.0 = 0x00 as u32;
+        pac::GPIOB.odr().write(|w| {
+            w.0 = 0x00;
         });
         let _ = wr.set_high().map_err(|_| DisplayError::BusWriteError);
         let _ = cs.set_high().map_err(|_| DisplayError::DCError);
 
-        let _ = pac::GPIOB.moder().write(|w| {
-            w.0 = 0x00 as u32;
+        pac::GPIOB.moder().write(|w| {
+            w.0 = 0x00;
         });
         let _ = cs.set_low().map_err(|_| DisplayError::DCError);
         let _ = dc.set_high().map_err(|_| DisplayError::DCError);
@@ -76,7 +76,7 @@ where
         let _ = rd.set_low().map_err(|_| DisplayError::DCError);
         //Timer::after_millis(1).await;
         //cortex_m::asm::delay(50000);
-        let _ = pac::GPIOB.moder().write(|w| {
+        pac::GPIOB.moder().write(|w| {
             w.0 = 0x55555555;
         });
         let _ = rd.set_high().map_err(|_| DisplayError::DCError);
@@ -93,12 +93,11 @@ where
     fn write_iter(&mut self, iter: impl Iterator<Item = u16>) -> ResultPin {
         for value in iter {
             let _ = self.cs.set_low().map_err(|_| DisplayError::DCError);
-            let _ = self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
-            let _ = pac::GPIOB.odr().write(|w| {
+            self.wr.set_low().map_err(|_| DisplayError::BusWriteError)?;
+            pac::GPIOB.odr().write(|w| {
                 w.0 = value as u32;
             });
-            let _ = self
-                .wr
+            self.wr
                 .set_high()
                 .map_err(|_| DisplayError::BusWriteError)?;
             let _ = self.cs.set_high().map_err(|_| DisplayError::DCError);
@@ -144,9 +143,9 @@ bind_interrupts!(struct Irqs {
     USART2 => usart::BufferedInterruptHandler<peripherals::USART2>;
 });
 
-fn clear(ary: &mut [u8]) {
-    ary.iter_mut().for_each(|m| *m = 0)
-}
+//fn clear(ary: &mut [u8]) {
+//    ary.iter_mut().for_each(|m| *m = 0)
+//}
 
 #[embassy_executor::task]
 async fn blinky(pin: AnyPin) {
@@ -162,7 +161,7 @@ async fn blinky(pin: AnyPin) {
 }
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     let mut config = embassy_stm32::Config::default();
     {
         use embassy_stm32::rcc::*;
@@ -198,7 +197,7 @@ async fn main(spawner: Spawner) {
     let (mut usr_tx, mut usr_rx) = usart.split();
     //let mut usart = Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7,
     //p.DMA1_CH6, config).unwrap();
-    let mut rst = Output::new(p.PA0, Level::High, Speed::Low);
+    //let rst = Output::new(p.PA0, Level::High, Speed::Low);
     let pc8 = Output::new(p.PC8, Level::High, Speed::VeryHigh);
     let pc7 = Output::new(p.PC7, Level::High, Speed::VeryHigh);
     let pc9 = Output::new(p.PC9, Level::High, Speed::VeryHigh);
