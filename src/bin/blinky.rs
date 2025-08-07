@@ -8,6 +8,7 @@ use embassy_stm32::pac;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::{BufferedUart, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_stm32::Peri;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
 use embassy_time::Timer;
 use embedded_io_async::{Read, Write};
@@ -148,7 +149,7 @@ bind_interrupts!(struct Irqs {
 //}
 
 #[embassy_executor::task]
-async fn blinky(pin: AnyPin) {
+async fn blinky(pin: Peri<'static, AnyPin>) {
     let mut led = Output::new(pin, Level::High, Speed::Low);
 
     loop {
@@ -193,7 +194,7 @@ async fn main(_spawner: Spawner) {
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let rx_buf = &mut RX_BUF.init([0; 128])[..];
-    let usart = BufferedUart::new(p.USART2, Irqs, p.PA3, p.PA2, tx_buf, rx_buf, config).unwrap();
+    let usart = BufferedUart::new(p.USART2, p.PA3, p.PA2, tx_buf, rx_buf, Irqs, config).unwrap();
     let (mut usr_tx, mut usr_rx) = usart.split();
     //let mut usart = Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7,
     //p.DMA1_CH6, config).unwrap();
