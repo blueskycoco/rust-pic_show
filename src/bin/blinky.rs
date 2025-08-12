@@ -241,7 +241,7 @@ async fn main(_spawner: Spawner) {
             )
             .draw(&mut ili9325)
             .unwrap();
-            while true {
+            loop {
                 unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
             }
         } else {
