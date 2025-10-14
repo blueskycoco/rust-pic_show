@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+#[cfg(feature = "defmt")]
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
@@ -15,6 +16,7 @@ use embassy_time::Timer;
 use embedded_io_async::{Read, Write};
 use md5_rs::Context;
 use static_cell::StaticCell;
+#[cfg(feature = "defmt")]
 use {defmt_rtt as _, panic_probe as _};
 
 /* display */
@@ -228,15 +230,18 @@ async fn main(spawner: Spawner) {
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         wdt.pet();
-        unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
+        usr_rx.read_exact(&mut bmp_raw).await.unwrap();
         let mut ctx = Context::new();
         ctx.read(&bmp_raw[22..]);
         let digest = ctx.finish();
         let remote_dig = &bmp_raw[2..18];
         if digest != remote_dig {
+            #[cfg(feature = "defmt")]
+            {
             error!("md5 missmatch");
             error!("L {:?}", digest);
             error!("R {:?}", remote_dig);
+            }
             Text::new(
                 "MD5 MissMatch",
                 Point::new(10, 100),
@@ -245,9 +250,10 @@ async fn main(spawner: Spawner) {
             .draw(&mut ili9325)
             .unwrap();
             while true {
-                unwrap!(usr_rx.read_exact(&mut bmp_raw).await);
+                usr_rx.read_exact(&mut bmp_raw).await.unwrap();
             }
         } else {
+            #[cfg(feature = "defmt")]
             info!("bmp_raw recv ok");
             led.toggle();
             let x: i32 = (bmp_raw[18] as i32) << 8 | bmp_raw[19] as i32;
@@ -257,13 +263,21 @@ async fn main(spawner: Spawner) {
                 Ok(bmp_byte) => {
                     let im: Image<Bmp<Rgb565>> = Image::new(&bmp_byte, Point::new(x, y));
                     im.draw(&mut ili9325).unwrap();
+                    #[cfg(feature = "defmt")]
                     info!("display logo ok {} {}\r", x, y);
                 }
                 Err(_error) => {
+                    #[cfg(feature = "defmt")]
                     error!("display logo failed {} {}\r", x, y);
                 }
             }
         }
-        unwrap!(usr_tx.write_all("send ok".as_bytes()).await);
+        usr_tx.write_all("send ok".as_bytes()).await.unwrap();
     }
+}
+
+#[cfg(not(feature = "defmt"))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    cortex_m::asm::udf();
 }
