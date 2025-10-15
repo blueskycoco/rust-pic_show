@@ -16,6 +16,12 @@ use embassy_time::Timer;
 use embedded_io_async::{Read, Write};
 use md5_rs::Context;
 use static_cell::StaticCell;
+use embassy_stm32::flash::{Flash, WRITE_SIZE};
+use embassy_boot_stm32::{AlignedBuffer, FirmwareUpdater, FirmwareUpdaterConfig};
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_embedded_hal::adapter::BlockingAsync;
+use embassy_boot_stm32::BlockingFirmwareState;
+use core::cell::RefCell;
 #[cfg(feature = "defmt")]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -184,6 +190,12 @@ async fn main(spawner: Spawner) {
         config.rcc.apb2_pre = APBPrescaler::DIV1;
     }
     let p = embassy_stm32::init(config);
+    let flash = Flash::new_blocking(p.FLASH);
+    let flash = Mutex::new(RefCell::new(flash));
+    let config = FirmwareUpdaterConfig::from_linkerfile_blocking(&flash, &flash);
+    let mut magic = AlignedBuffer([0; WRITE_SIZE]);
+    let mut firmware_state = BlockingFirmwareState::from_config(config, &mut magic.0);
+    firmware_state.mark_booted().expect("Failed to mark booted");
     //let p = embassy_stm32::init(Default::default());
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
