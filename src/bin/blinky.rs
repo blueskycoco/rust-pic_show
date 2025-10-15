@@ -163,10 +163,10 @@ async fn blinky(pin: Peri<'static, AnyPin>) {
 
     loop {
         led.set_high();
-        Timer::after_millis(300).await;
+        Timer::after_millis(1000).await;
 
         led.set_low();
-        Timer::after_millis(300).await;
+        Timer::after_millis(1000).await;
     }
 }
 
@@ -238,7 +238,7 @@ async fn main(spawner: Spawner) {
     .draw(&mut ili9325)
     .unwrap();
     let mut bmp_raw = [0u8; 7840];
-    //spawner.spawn(blinky(p.PA11.degrade())).unwrap();
+    spawner.spawn(blinky(p.PA11.into()).expect("failed"));
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         wdt.pet();
