@@ -200,7 +200,7 @@ async fn main(spawner: Spawner) {
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
     let mut config = Config::default();
-    config.baudrate = 1_500_000;
+    config.baudrate = 921_600;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
