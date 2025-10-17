@@ -1,9 +1,14 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
 #[cfg(feature = "defmt")]
 use defmt::*;
+use embassy_boot_stm32::BlockingFirmwareState;
+use embassy_boot_stm32::{AlignedBuffer, FirmwareUpdater, FirmwareUpdaterConfig};
+use embassy_embedded_hal::adapter::BlockingAsync;
 use embassy_executor::Spawner;
+use embassy_stm32::flash::{Flash, WRITE_SIZE};
 use embassy_stm32::gpio::{AnyPin, Level, Output, Pin, Speed};
 use embassy_stm32::pac;
 use embassy_stm32::time::mhz;
@@ -12,16 +17,11 @@ use embassy_stm32::usart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config}
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_stm32::Peri;
 use embassy_stm32::{bind_interrupts, peripherals, usart};
+use embassy_sync::blocking_mutex::Mutex;
 use embassy_time::Timer;
 use embedded_io_async::{Read, Write};
 use md5_rs::Context;
 use static_cell::StaticCell;
-use embassy_stm32::flash::{Flash, WRITE_SIZE};
-use embassy_boot_stm32::{AlignedBuffer, FirmwareUpdater, FirmwareUpdaterConfig};
-use embassy_sync::blocking_mutex::Mutex;
-use embassy_embedded_hal::adapter::BlockingAsync;
-use embassy_boot_stm32::BlockingFirmwareState;
-use core::cell::RefCell;
 #[cfg(feature = "defmt")]
 use {defmt_rtt as _, panic_probe as _};
 
@@ -163,10 +163,10 @@ async fn blinky(pin: Peri<'static, AnyPin>) {
 
     loop {
         led.set_high();
-        Timer::after_millis(1000).await;
+        Timer::after_millis(500).await;
 
         led.set_low();
-        Timer::after_millis(1000).await;
+        Timer::after_millis(500).await;
     }
 }
 
@@ -200,7 +200,7 @@ async fn main(spawner: Spawner) {
     let mut wdt = IndependentWatchdog::new(p.IWDG, 10_000_000);
     wdt.unleash();
     let mut config = Config::default();
-    config.baudrate = 2_000_000;
+    config.baudrate = 1_500_000;
     static TX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
     let tx_buf = &mut TX_BUF.init([0; 128])[..];
     static RX_BUF: StaticCell<[u8; 128]> = StaticCell::new();
@@ -242,6 +242,7 @@ async fn main(spawner: Spawner) {
     let mut led = Output::new(p.PA12, Level::High, Speed::VeryHigh);
     loop {
         wdt.pet();
+        usr_tx.write_all("send ok".as_bytes()).await.unwrap();
         usr_rx.read_exact(&mut bmp_raw).await.unwrap();
         let mut ctx = Context::new();
         ctx.read(&bmp_raw[22..]);
@@ -250,9 +251,9 @@ async fn main(spawner: Spawner) {
         if digest != remote_dig {
             #[cfg(feature = "defmt")]
             {
-            error!("md5 missmatch");
-            error!("L {:?}", digest);
-            error!("R {:?}", remote_dig);
+                error!("md5 missmatch");
+                error!("L {:?}", digest);
+                error!("R {:?}", remote_dig);
             }
             Text::new(
                 "MD5 MissMatch",
@@ -284,7 +285,6 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
-        usr_tx.write_all("send ok".as_bytes()).await.unwrap();
     }
 }
 
